@@ -3,7 +3,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import db
 import json
 from typing import Optional, Callable
+from dotenv import load_dotenv
 
+import weather
 from config import *
 
 
@@ -17,13 +19,24 @@ def database_connection(class_: type) -> type:
 
 @database_connection
 class CustomHandler(BaseHTTPRequestHandler):
-    def respond(self, status: int, body: str, message: Optional[str] = None) -> None:
+    def respond(
+            self, status: int, body: str, 
+            headers: Optional[dict] = None, 
+            message: Optional[str] = None,
+        ) -> None:
         self.send_response(status, message)
         self.send_header('Content-Type', 'text')
+        if headers:
+            for header, value in headers.items():
+                self.send_header(header, value)
         self.end_headers()
         self.wfile.write(body.encode())
 
-    def do_GET(self) -> None:
+    def not_allowed(self, methods: Optional[str] = None) -> None:
+        headers = {'Allow': methods} if methods else {'Allow': '[GET]'}
+        self.respond(NOT_ALLOWED, '', headers=headers)
+
+    def cities_page(self) -> None:
         try:
             cities = db.get_cities(self.db_cursor)
         except Exception as error:
@@ -31,6 +44,23 @@ class CustomHandler(BaseHTTPRequestHandler):
         else:
             status, body = OK, '\n'.join(str(city) for city in cities)
         self.respond(status, body)
+
+    def weather_page(self) -> None:
+        city_name = self.path[self.path.rindex('/')+1:]
+        db_response = db.coordinates_by_city(self.db_cursor, city_name)
+        if not db_response:
+            self.respond(OK, f'No city named {city_name} in database')
+            return
+        self.respond(OK, str(weather.get_weather(*db_response)))
+
+    def do_GET(self) -> None:
+        if self.path.startswith('/cities'):
+            self.cities_page()
+        elif self.path.startswith('/weather'):
+            self.weather_page()
+        else:
+            pass
+            #self.main_page()
 
     def do_POST(self) -> None:
         try:

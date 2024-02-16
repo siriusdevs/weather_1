@@ -9,5 +9,9 @@ SERVER_ERROR = 500
 BAD_REQUEST = 400
 CREATED = 201
 NO_CONTENT = 204
+NOT_ALLOWED = 405
 
 CITY_KEYS = 'name', 'lat', 'lon'
+
+YANDEX_KEY_HEADER = 'X-Yandex-API-KEY'
+URL = 'https://api.weather.yandex.ru/v2/informers'
