@@ -3,7 +3,7 @@ import os
 import psycopg
 from dotenv import load_dotenv
 
-from config import CITIES_SELECT
+from config import CITIES_SELECT, CITIES_INSERT
 
 
 def connect() -> tuple[psycopg.Connection, psycopg.Cursor]:
@@ -27,3 +27,9 @@ def connect() -> tuple[psycopg.Connection, psycopg.Cursor]:
 def get_cities(cursor: psycopg.Cursor) -> list[tuple]:
     cursor.execute(CITIES_SELECT)
     return cursor.fetchall()
+
+
+def add_city(cursor: psycopg.Cursor, connection: psycopg.Connection, city: tuple) -> bool:
+    cursor.execute(CITIES_INSERT, params=city)
+    connection.commit()
+    return bool(cursor.rowcount)

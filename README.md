@@ -10,3 +10,6 @@ CREATE TABLE city (name TEXT NOT NULL, latitude FLOAT NOT NULL, longtitude FLOAT
 
 # inserting values
 INSERT INTO city (name, latitude, longtitude) VALUES ('city', 1.0, 1.0);
+
+# unique city constraint
+ALTER TABLE city ADD CONSTRAINT unique_city UNIQUE(name, latitude, longtitude);
