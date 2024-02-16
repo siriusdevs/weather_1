@@ -2,7 +2,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import db
 import json
-from typing import Optional
+from typing import Optional, Callable
 
 from config import *
 
@@ -46,15 +46,26 @@ class CustomHandler(BaseHTTPRequestHandler):
         if any(key not in city.keys() for key in CITY_KEYS) or len(city) != len(CITY_KEYS):
             self.respond(BAD_REQUEST, f'City json data is invalid, required keys: {CITY_KEYS}')
             return
+        self.change_db(db.add_city, (self.db_cursor, self.db_connection, [city[key] for key in CITY_KEYS]), 'created', CREATED)
+
+    def do_DELETE(self) -> None:
+        city_name = self.path[1:]
+        if not city_name:
+            self.respond(BAD_REQUEST, 'City is not specified')
+            return
+        self.change_db(db.delete_city, (self.db_cursor, self.db_connection, city_name), 'deleted', NO_CONTENT)
+
+    def change_db(self, method: Callable, params: tuple, action: str, success_code: int) -> None:
         try:
-            created = db.add_city(self.db_cursor, self.db_connection, [city[key] for key in CITY_KEYS])
+            deleted = method(*params)
         except Exception as error:
             self.respond(SERVER_ERROR, f'Database error: {error}')
+            self.db_connection.rollback() # Roll back the transaction if it failed
             return
-        if created:
-            self.respond(CREATED, f'Record with {city} was created')
+        if deleted:
+            self.respond(success_code, f'Record with {params[-1]} was {action}')
         else:
-            self.respond(SERVER_ERROR, f'City was not created: {city["name"]}')
+            self.respond(SERVER_ERROR, f'City was not {action}: {params[-1]}')
 
 
 if __name__ == '__main__':
