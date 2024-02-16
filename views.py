@@ -2,15 +2,15 @@ import config
 
 
 def main() -> str:
-    with open(config.TEMPLATE_MAIN, 'r') as file:
-        return file.read()
-    
+    with open(config.TEMPLATE_MAIN, 'r') as template:
+        return template.read()
+
 
 def weather(weather_data: dict) -> str:
-    with open(config.TEMPLATE_WEATHER, 'r') as file:
-        return file.read().format(**weather_data)
+    with open(config.TEMPLATE_WEATHER, 'r') as template:
+        return template.read().format(**weather_data)
 
 
-def cities(cities: str) -> str:
-    with open(config.TEMPLATE_CITIES, 'r') as file:
-        return file.read().format(cities=cities)
+def cities(cities_text: str) -> str:
+    with open(config.TEMPLATE_CITIES, 'r') as template:
+        return template.read().format(cities=cities_text)
