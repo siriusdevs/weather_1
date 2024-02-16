@@ -3,8 +3,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import db
 import json
 from typing import Optional, Callable
-from dotenv import load_dotenv
 
+import views
 import weather
 from config import *
 
@@ -42,7 +42,8 @@ class CustomHandler(BaseHTTPRequestHandler):
         except Exception as error:
             status, body = SERVER_ERROR, f'Database error: {error}'
         else:
-            status, body = OK, '\n'.join(str(city) for city in cities)
+            cities = '\n'.join(str(city) for city in cities)
+            status, body = OK, views.cities(cities) 
         self.respond(status, body)
 
     def weather_page(self) -> None:
@@ -51,7 +52,10 @@ class CustomHandler(BaseHTTPRequestHandler):
         if not db_response:
             self.respond(OK, f'No city named {city_name} in database')
             return
-        self.respond(OK, str(weather.get_weather(*db_response)))
+        self.respond(OK, views.weather(weather.get_weather(*db_response)))
+
+    def main_page(self) -> None:
+        self.respond(OK, views.main())
 
     def do_GET(self) -> None:
         if self.path.startswith('/cities'):
@@ -59,8 +63,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         elif self.path.startswith('/weather'):
             self.weather_page()
         else:
-            pass
-            #self.main_page()
+            self.main_page()
 
     def do_POST(self) -> None:
         try:

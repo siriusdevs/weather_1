@@ -12,6 +12,12 @@ NO_CONTENT = 204
 NOT_ALLOWED = 405
 
 CITY_KEYS = 'name', 'lat', 'lon'
+WEATHER_FACT_KEYS = 'temp', 'feels_like', 'wind_speed'
 
 YANDEX_KEY_HEADER = 'X-Yandex-API-KEY'
 URL = 'https://api.weather.yandex.ru/v2/informers'
+
+TEMPLATE_FOLDER = 'templates'
+TEMPLATE_MAIN = f'{TEMPLATE_FOLDER}/index.html'
+TEMPLATE_WEATHER = f'{TEMPLATE_FOLDER}/weather.html'
+TEMPLATE_CITIES = f'{TEMPLATE_FOLDER}/cities.html'
