@@ -38,7 +38,8 @@ class CustomHandler(BaseHTTPRequestHandler):
         return query
 
     def respond(
-        self, status: int, body: str,
+        self, status: int, 
+        body: Optional[str] = None,
         headers: Optional[dict] = None,
         message: Optional[str] = None,
     ) -> None:
@@ -48,7 +49,8 @@ class CustomHandler(BaseHTTPRequestHandler):
             for header, h_value in headers.items():
                 self.send_header(header, h_value)
         self.end_headers()
-        self.wfile.write(body.encode())
+        if body:
+            self.wfile.write(body.encode())
 
     def cities_page(self) -> None:
         try:
@@ -83,14 +85,21 @@ class CustomHandler(BaseHTTPRequestHandler):
         else:
             self.respond(config.OK, views.main())
 
+    def respond_not_allowed(self):
+        self.respond(config.NOT_ALLOWED, '', headers=config.ALLOW_GET_HEAD)
+
     def do_POST(self) -> None:
+        if not self.path.startswith('/cities'):
+            self.respond_not_allowed()
+            return
         try:
             body_len = int(self.headers.get('Content-Length'))
         except ValueError:
             self.respond(config.BAD_REQUEST, 'Content-Length header error')
             return
+        body = self.rfile.read(body_len)
         try:
-            city = json.loads(self.rfile.read(body_len))
+            city = json.loads(body)
         except json.JSONDecodeError:
             self.respond(config.BAD_REQUEST, 'Invalid JSON')
             return
@@ -101,17 +110,20 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.respond(config.BAD_REQUEST, msg)
             return
         insert_args = (self.db_cursor, self.db_connection, [city[key] for key in config.CITY_KEYS])
-        self.change_db(db.add_city, insert_args, 'created', config.CREATED)
+        self.change_db(db.add_city, insert_args, 'created', config.CREATED, body.decode())
 
     def do_DELETE(self) -> None:
-        city_name = self.path[1:]
-        if not city_name:
+        if not self.path.startswith('/cities'):
+            self.respond_not_allowed()
+            return
+        query = self.get_query()
+        if 'city' not in query.keys():
             self.respond(config.BAD_REQUEST, 'City is not specified')
             return
-        delete_args = (self.db_cursor, self.db_connection, city_name)
+        delete_args = (self.db_cursor, self.db_connection, query['city'])
         self.change_db(db.delete_city, delete_args, 'deleted', config.NO_CONTENT)
 
-    def change_db(self, method: Callable, args: tuple, action: str, success_code: int) -> None:
+    def change_db(self, method: Callable, args: tuple, action: str, success_code: int, body: Optional[str] = None) -> None:
         try:
             deleted = method(*args)
         except Exception as error:
@@ -119,9 +131,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.db_connection.rollback()  # Roll back the transaction if it failed
             return
         if deleted:
-            self.respond(success_code, f'Record with {args[-1]} was {action}')
+            self.respond(success_code, body if config.CREATED else None)
         else:
-            self.respond(config.SERVER_ERROR, f'City was not {action}: {args[-1]}')
+            self.respond(config.SERVER_ERROR, f'Record was not {action}: {args[-1]}')
 
 
 if __name__ == '__main__':

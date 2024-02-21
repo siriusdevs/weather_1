@@ -6,6 +6,8 @@ CREATED = 201
 NO_CONTENT = 204
 NOT_ALLOWED = 405
 
+ALLOW_GET_HEAD = {'Allow': '[GET, HEAD]'}
+
 CITY_KEYS = 'name', 'lat', 'lon'
 WEATHER_FACT_KEYS = 'temp', 'feels_like', 'wind_speed'
 
