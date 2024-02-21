@@ -15,6 +15,7 @@ URL = 'https://api.weather.yandex.ru/v2/informers'
 TEMPLATE_FOLDER = 'templates'
 TEMPLATE_MAIN = f'{TEMPLATE_FOLDER}/index.html'
 TEMPLATE_WEATHER = f'{TEMPLATE_FOLDER}/weather.html'
+TEMPLATE_WEATHER_DUMMY = f'{TEMPLATE_FOLDER}/weather_dummy.html'
 TEMPLATE_CITIES = f'{TEMPLATE_FOLDER}/cities.html'
 
 DEFAULT_TIMEOUT = 8

@@ -18,6 +18,25 @@ def database_connection(class_: type) -> type:
 
 @database_connection
 class CustomHandler(BaseHTTPRequestHandler):
+    def get_query(self) -> dict:
+        qm_index = self.path.find('?')
+        if qm_index == -1 or qm_index == len(self.path) - 1:
+            return {}
+        pairs = self.path[qm_index+1:].split('&')
+        query = {}
+        for pair in pairs:
+            key, value = pair.split('=')
+            if value.isdigit():
+                query[key] = int(value)
+                continue
+            try:
+                float(value)
+            except ValueError:
+                query[key] = views.plusses_to_spaces(value)
+            else:
+                query[key] = float(value)
+        return query
+
     def respond(
         self, status: int, body: str,
         headers: Optional[dict] = None,
@@ -37,17 +56,24 @@ class CustomHandler(BaseHTTPRequestHandler):
         except Exception as error:
             status, body = config.SERVER_ERROR, f'Database error: {error}'
         else:
-            cities = '\n'.join(str(city) for city in cities)
             status, body = config.OK, views.cities(cities)
         self.respond(status, body)
 
     def weather_page(self) -> None:
-        city_name = self.path[self.path.rindex('/')+1:]
+        CITY_KEY = 'city'
+        query = self.get_query()
+        if CITY_KEY not in query.keys():
+            cities = [city for city, _, _ in db.get_cities(self.db_cursor)]
+            self.respond(config.OK, views.weather_dummy(cities))
+            return
+        city_name = query[CITY_KEY]
         db_response = db.coordinates_by_city(self.db_cursor, city_name)
         if not db_response:
             self.respond(config.OK, f'No city named {city_name} in database')
             return
-        self.respond(config.OK, views.weather(weather.get_weather(*db_response)))
+        weather_params = weather.get_weather(*db_response)
+        weather_params[CITY_KEY] = city_name
+        self.respond(config.OK, views.weather(weather_params))
 
     def do_GET(self) -> None:
         if self.path.startswith('/cities'):
