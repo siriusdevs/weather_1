@@ -6,6 +6,7 @@ import config
 import db
 import views
 import weather
+import psycopg
 
 
 def database_connection(class_: type) -> type:
@@ -85,13 +86,24 @@ class CustomHandler(BaseHTTPRequestHandler):
         else:
             self.respond(config.OK, views.main())
 
-    def respond_not_allowed(self):
+    def respond_not_allowed(self) -> None:
         self.respond(config.NOT_ALLOWED, '', headers=config.ALLOW_GET_HEAD)
 
-    def do_POST(self) -> None:
+    def check_auth(self) -> bool:
+        if config.AUTH_HEADER not in self.headers.keys():
+            return False
+        return db.check_token(self.db_cursor, self.headers[config.AUTH_HEADER])
+
+    def allowed_and_auth(self) -> bool:
         if not self.path.startswith('/cities'):
             self.respond_not_allowed()
-            return
+            return False
+        if not self.check_auth():
+            self.respond(config.FORBIDDEN)
+            return False
+        return True
+
+    def read_json_body(self) -> dict | None:
         try:
             body_len = int(self.headers.get('Content-Length'))
         except ValueError:
@@ -99,9 +111,17 @@ class CustomHandler(BaseHTTPRequestHandler):
             return
         body = self.rfile.read(body_len)
         try:
-            city = json.loads(body)
-        except json.JSONDecodeError:
-            self.respond(config.BAD_REQUEST, 'Invalid JSON')
+            content = json.loads(body)
+        except json.JSONDecodeError as error:
+            self.respond(config.BAD_REQUEST, f'Invalid JSON: {error}')
+            return
+        return content
+
+    def do_POST(self) -> None:
+        if not self.allowed_and_auth():
+            return
+        city = self.read_json_body()
+        if not city:
             return
         keys_absent = any(key not in city.keys() for key in config.CITY_KEYS)
         redundant_keys = len(city) != len(config.CITY_KEYS)
@@ -110,22 +130,57 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.respond(config.BAD_REQUEST, msg)
             return
         insert_args = (self.db_cursor, self.db_connection, [city[key] for key in config.CITY_KEYS])
-        self.change_db(db.add_city, insert_args, 'created', config.CREATED, body.decode())
+        self.change_db(db.add_city, insert_args, 'created', config.CREATED, json.dumps(city))
+
+    def check_query_key(self, query: dict, key: str) -> None:
+        city_key = 'name'
+        if city_key not in query.keys():
+            self.respond(config.BAD_REQUEST, f'City key {city_key} is not specified')
+            return False
+        return True
 
     def do_DELETE(self) -> None:
-        if not self.path.startswith('/cities'):
-            self.respond_not_allowed()
+        if not self.allowed_and_auth():
             return
+        city_key = 'name'
         query = self.get_query()
-        if 'city' not in query.keys():
-            self.respond(config.BAD_REQUEST, 'City is not specified')
+        if not self.check_query_key(query, city_key):
             return
-        delete_args = (self.db_cursor, self.db_connection, query['city'])
+        delete_args = (self.db_cursor, self.db_connection, query[city_key])
         self.change_db(db.delete_city, delete_args, 'deleted', config.NO_CONTENT)
+
+    def do_PUT(self) -> None:
+        if not self.allowed_and_auth():
+            return
+        city_key = 'name'
+        query = self.get_query()
+        if city_key not in query.keys():
+            self.do_POST()
+            return
+        city = query[city_key]
+        if not db.coordinates_by_city(self.db_cursor, city):
+            self.do_POST()
+            return
+        content = self.read_json_body()
+        if not content:
+            return
+        for key in content.keys():
+            if key not in config.CITY_KEYS:
+                self.respond(config.BAD_REQUEST, f'key {key} is not defined for this instance')
+                return
+        if db.update_city(self.db_cursor, self.db_connection, city, content):
+            self.respond(config.OK, f'instance was updated')
+        else:
+            self.respond(config.SERVER_ERROR, f'failed updating instance')
+        
 
     def change_db(self, method: Callable, args: tuple, action: str, success_code: int, body: Optional[str] = None) -> None:
         try:
             deleted = method(*args)
+        except psycopg.errors.UniqueViolation:
+            self.respond(config.OK, f'already exists: {args[-1]}')
+            self.db_connection.rollback()  # Roll back the transaction if it failed
+            return
         except Exception as error:
             self.respond(config.SERVER_ERROR, f'Database error: {error}')
             self.db_connection.rollback()  # Roll back the transaction if it failed
@@ -133,7 +188,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         if deleted:
             self.respond(success_code, body if config.CREATED else None)
         else:
-            self.respond(config.SERVER_ERROR, f'Record was not {action}: {args[-1]}')
+            self.respond(config.OK, f'Record was not {action}: {args[-1]}')
 
 
 if __name__ == '__main__':

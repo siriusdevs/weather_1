@@ -5,10 +5,11 @@ BAD_REQUEST = 400
 CREATED = 201
 NO_CONTENT = 204
 NOT_ALLOWED = 405
+FORBIDDEN = 403
 
 ALLOW_GET_HEAD = {'Allow': '[GET, HEAD]'}
 
-CITY_KEYS = 'name', 'lat', 'lon'
+CITY_KEYS = 'name', 'latitude', 'longtitude'
 WEATHER_FACT_KEYS = 'temp', 'feels_like', 'wind_speed'
 
 YANDEX_HEADER = 'X-Yandex-API-KEY'
@@ -21,3 +22,5 @@ TEMPLATE_WEATHER_DUMMY = f'{TEMPLATE_FOLDER}/weather_dummy.html'
 TEMPLATE_CITIES = f'{TEMPLATE_FOLDER}/cities.html'
 
 DEFAULT_TIMEOUT = 8
+
+AUTH_HEADER = 'WEATHER_API_KEY'
