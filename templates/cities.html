@@ -4,15 +4,49 @@
             Cities
         </title>
     </head>
-    <body>
+    <body>       
+        <h3>Filter cities</h3> 
+        <form id="cities_form" action="/cities">
+            <textField>Name</textField>
+            <br>
+            <input type="text" id="cities" name="name" form="cities_form">
+            <br>
+            <textField>Latitude</textField>
+            <br>
+            <input type="text" id="cities" name="latitude" form="cities_form">
+            <br>
+            <textField>Longtitude</textField>
+            <br>
+            <input type="text" id="cities" name="longtitude" form="cities_form">
+            <br><br>
+            <input type="submit">
+        </form>
+        
         <h3>
             Cities:
         </h3>
         <div>
             {cities}
         </div>
+        <br>
+
         <a href="/weather">Weather</a>
         <br>
         <a href="/">Main page</a>
     </body>
+    <script>
+        var myForm = document.getElementById('cities_form');
+
+        myForm.addEventListener('submit', function () {{
+            var allInputs = myForm.getElementsByTagName('input');
+
+            for (var i = 0; i < allInputs.length; i++) {{
+                var input = allInputs[i];
+
+                if (input.name && !input.value) {{
+                    input.name = '';
+                }}
+            }}
+        }});
+    </script>
 </html>

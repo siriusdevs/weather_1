@@ -2,11 +2,12 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Callable, Optional
 
+import psycopg
+
 import config
 import db
 import views
 import weather
-import psycopg
 
 
 def database_connection(class_: type) -> type:
@@ -39,7 +40,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         return query
 
     def respond(
-        self, status: int, 
+        self, status: int,
         body: Optional[str] = None,
         headers: Optional[dict] = None,
         message: Optional[str] = None,
@@ -58,8 +59,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             cities = method(*args)
         except Exception as error:
             return config.SERVER_ERROR, f'Database error: {error}'
-        else:
-            return config.OK, views.cities(cities)
+        return config.OK, views.cities(cities)
 
     def cities_page(self) -> None:
         query = self.get_query()
@@ -67,7 +67,6 @@ class CustomHandler(BaseHTTPRequestHandler):
             method = db.get_all_cities
             args = (self.db_cursor,)
         else:
-            print('?????????????')
             method = db.get_cities
             attrs, attr_vals = [], []
             for attr, attr_val in query.items():
@@ -78,19 +77,19 @@ class CustomHandler(BaseHTTPRequestHandler):
         self.respond(status, body)
 
     def weather_page(self) -> None:
-        CITY_KEY = 'city'
+        city_key = 'city'
         query = self.get_query()
-        if CITY_KEY not in query.keys():
+        if city_key not in query.keys():
             cities = [city for city, _, _ in db.get_all_cities(self.db_cursor)]
             self.respond(config.OK, views.weather_dummy(cities))
             return
-        city_name = query[CITY_KEY]
+        city_name = query[city_key]
         db_response = db.coordinates_by_city(self.db_cursor, city_name)
         if not db_response:
             self.respond(config.OK, f'No city named {city_name} in database')
             return
         weather_params = weather.get_weather(*db_response)
-        weather_params[CITY_KEY] = city_name
+        weather_params[city_key] = city_name
         self.respond(config.OK, views.weather(weather_params))
 
     def do_GET(self) -> None:
@@ -123,14 +122,14 @@ class CustomHandler(BaseHTTPRequestHandler):
             body_len = int(self.headers.get('Content-Length'))
         except ValueError:
             self.respond(config.BAD_REQUEST, 'Content-Length header error')
-            return
+            return None
         body = self.rfile.read(body_len)
         try:
-            content = json.loads(body)
+            body = json.loads(body)
         except json.JSONDecodeError as error:
             self.respond(config.BAD_REQUEST, f'Invalid JSON: {error}')
-            return
-        return content
+            return None
+        return body
 
     def do_POST(self) -> None:
         if not self.allowed_and_auth():
@@ -145,9 +144,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.respond(config.BAD_REQUEST, msg)
             return
         insert_args = (self.db_cursor, self.db_connection, [city[key] for key in config.CITY_KEYS])
-        if self.change_db(db.add_city, insert_args, 'created', config.CREATED, json.dumps(city)):
-            location = {config.LOCATION_HEADER: f'{config.HOST}:{config.PORT}/cities?name={city["name"]}'}
-            self.respond(config.CREATED, headers=location)
+        if self.change_db(db.add_city, insert_args):
+            address = f'{config.HOST}:{config.PORT}/cities?name={city["name"]}'
+            self.respond(config.CREATED, headers={config.LOCATION_HEADER: address})
 
     def check_query_key(self, query: dict, key: str) -> None:
         city_key = 'name'
@@ -164,7 +163,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         if not self.check_query_key(query, city_key):
             return
         delete_args = (self.db_cursor, self.db_connection, query[city_key])
-        if self.change_db(db.delete_city, delete_args, 'deleted', ):
+        if self.change_db(db.delete_city, delete_args):
             self.respond(config.NO_CONTENT)
 
     def do_PUT(self) -> None:
@@ -179,24 +178,24 @@ class CustomHandler(BaseHTTPRequestHandler):
         if not db.coordinates_by_city(self.db_cursor, city):
             self.do_POST()
             return
-        content = self.read_json_body()
-        if not content:
+        body = self.read_json_body()
+        if not body:
             return
-        for key in content.keys():
+        for key in body.keys():
             if key not in config.CITY_KEYS:
                 self.respond(config.BAD_REQUEST, f'key {key} is not defined for this instance')
                 return
-        if db.update_city(self.db_cursor, self.db_connection, city, content):
-            self.respond(config.OK, f'instance was updated')
+        if db.update_city(self.db_cursor, self.db_connection, city, body):
+            self.respond(config.OK, 'instance was updated')
         else:
-            self.respond(config.SERVER_ERROR, f'failed updating instance')
-        
+            self.respond(config.SERVER_ERROR, 'failed updating instance')
+
     def do_HEAD(self) -> None:
         self.respond(config.OK)
 
     def change_db(
         self,
-        method: Callable, 
+        method: Callable,
         args: tuple,
     ) -> bool:
         try:
@@ -210,7 +209,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.db_connection.rollback()  # Roll back the transaction if it failed
             return False
         if not changed:
-            self.respond(config.SERVER_ERROR, f'operation failed on behalf of database')
+            self.respond(config.SERVER_ERROR, 'operation failed on behalf of database')
         return changed
 
 
