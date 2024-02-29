@@ -53,20 +53,35 @@ class CustomHandler(BaseHTTPRequestHandler):
         if body:
             self.wfile.write(body.encode())
 
-    def cities_page(self) -> None:
+    def cities_getter(self, method: Callable, args: tuple) -> None:
         try:
-            cities = db.get_cities(self.db_cursor)
+            cities = method(*args)
         except Exception as error:
-            status, body = config.SERVER_ERROR, f'Database error: {error}'
+            return config.SERVER_ERROR, f'Database error: {error}'
         else:
-            status, body = config.OK, views.cities(cities)
+            return config.OK, views.cities(cities)
+
+    def cities_page(self) -> None:
+        query = self.get_query()
+        if not query or any(key not in config.CITY_KEYS for key in query.keys()):
+            method = db.get_all_cities
+            args = (self.db_cursor,)
+        else:
+            print('?????????????')
+            method = db.get_cities
+            attrs, attr_vals = [], []
+            for attr, attr_val in query.items():
+                attrs.append(attr)
+                attr_vals.append(attr_val)
+            args = (self.db_cursor, attrs, attr_vals)
+        status, body = self.cities_getter(method, args)
         self.respond(status, body)
 
     def weather_page(self) -> None:
         CITY_KEY = 'city'
         query = self.get_query()
         if CITY_KEY not in query.keys():
-            cities = [city for city, _, _ in db.get_cities(self.db_cursor)]
+            cities = [city for city, _, _ in db.get_all_cities(self.db_cursor)]
             self.respond(config.OK, views.weather_dummy(cities))
             return
         city_name = query[CITY_KEY]
@@ -130,7 +145,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             self.respond(config.BAD_REQUEST, msg)
             return
         insert_args = (self.db_cursor, self.db_connection, [city[key] for key in config.CITY_KEYS])
-        self.change_db(db.add_city, insert_args, 'created', config.CREATED, json.dumps(city))
+        if self.change_db(db.add_city, insert_args, 'created', config.CREATED, json.dumps(city)):
+            location = {config.LOCATION_HEADER: f'{config.HOST}:{config.PORT}/cities?name={city["name"]}'}
+            self.respond(config.CREATED, headers=location)
 
     def check_query_key(self, query: dict, key: str) -> None:
         city_key = 'name'
@@ -147,7 +164,8 @@ class CustomHandler(BaseHTTPRequestHandler):
         if not self.check_query_key(query, city_key):
             return
         delete_args = (self.db_cursor, self.db_connection, query[city_key])
-        self.change_db(db.delete_city, delete_args, 'deleted', config.NO_CONTENT)
+        if self.change_db(db.delete_city, delete_args, 'deleted', ):
+            self.respond(config.NO_CONTENT)
 
     def do_PUT(self) -> None:
         if not self.allowed_and_auth():
@@ -173,22 +191,27 @@ class CustomHandler(BaseHTTPRequestHandler):
         else:
             self.respond(config.SERVER_ERROR, f'failed updating instance')
         
+    def do_HEAD(self) -> None:
+        self.respond(config.OK)
 
-    def change_db(self, method: Callable, args: tuple, action: str, success_code: int, body: Optional[str] = None) -> None:
+    def change_db(
+        self,
+        method: Callable, 
+        args: tuple,
+    ) -> bool:
         try:
-            deleted = method(*args)
+            changed = method(*args)
         except psycopg.errors.UniqueViolation:
             self.respond(config.OK, f'already exists: {args[-1]}')
             self.db_connection.rollback()  # Roll back the transaction if it failed
-            return
+            return False
         except Exception as error:
             self.respond(config.SERVER_ERROR, f'Database error: {error}')
             self.db_connection.rollback()  # Roll back the transaction if it failed
-            return
-        if deleted:
-            self.respond(success_code, body if config.CREATED else None)
-        else:
-            self.respond(config.OK, f'Record was not {action}: {args[-1]}')
+            return False
+        if not changed:
+            self.respond(config.SERVER_ERROR, f'operation failed on behalf of database')
+        return changed
 
 
 if __name__ == '__main__':
